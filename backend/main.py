@@ -1,5 +1,5 @@
 """
-YT Clean Proxy — v1.4.4 (Strongest 2026 anti-bot + Full Timeline Seeking)
+YT Clean Proxy
 """
 
 import asyncio
@@ -176,7 +176,7 @@ async def generate(req: GenerateRequest, request: Request):
     }
 
 
-# ==================== FIXED STREAMING ENDPOINT ====================
+# ==================== STREAMING ENDPOINT ====================
 @app.get("/v/{short_id}.mp4")
 async def stream_video(short_id: str, request: Request):
     cleanup_expired()
