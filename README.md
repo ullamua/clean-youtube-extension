@@ -4,7 +4,7 @@ A Chrome extension + self-hostable backend to generate clean, shareable MP4 link
 
 ---
 
-## 📦 What's Inside
+## File Tree
 
 ```
 ├── extension/          ← Chrome Extension (Manifest V3)
@@ -24,7 +24,7 @@ A Chrome extension + self-hostable backend to generate clean, shareable MP4 link
 
 ---
 
-## 🚀 Quick Start
+## Setup
 
 ### Step 1: Deploy the Backend (pick one)
 
@@ -48,7 +48,7 @@ Backend will be at `http://localhost:8000`
 2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
 3. Railway auto-detects `Dockerfile` and `railway.json`
 4. Set env var: `BASE_URL=https://your-app.up.railway.app`
-5. Done!
+5. Done
 
 #### Option D: Any Docker host
 ```bash
@@ -64,10 +64,10 @@ docker run -p 8000:8000 -e BASE_URL=https://yourdomain.com yt-clean-proxy
 3. Enable **Developer mode** (toggle in top-right corner)
 4. Click **Load unpacked**
 5. Select the `extension/` folder
-6. Done! You'll see the 🔗 icon in your toolbar
+6. Done
 
 ### Step 3: Configure the Backend URL
-
+1. Pin the Extension to your toolbar
 1. Right-click the extension icon → **Options**
 2. Paste your backend URL (e.g. `https://yt-clean-proxy.onrender.com`)
 3. Click **Save**
@@ -76,7 +76,7 @@ If running locally, the default `http://localhost:8000` works out of the box.
 
 ---
 
-## 🍪 YouTube Authentication (IMPORTANT)
+## YouTube Authentication (IMPORTANT)
 
 YouTube now blocks many server IPs with "Sign in to confirm you're not a bot". To fix this, you need to provide a **cookies.txt** file from a logged-in YouTube session.
 
@@ -84,7 +84,6 @@ YouTube now blocks many server IPs with "Sign in to confirm you're not a bot". T
 
 1. Install a browser extension to export cookies:
    - Chrome: [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
-   - Firefox: [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/)
 2. Go to [youtube.com](https://youtube.com) and make sure you're logged in
 3. Click the cookie export extension → export cookies for youtube.com
 4. Save the file as `cookies.txt`
@@ -119,7 +118,7 @@ curl -X DELETE https://your-backend-url/cookies
 
 ---
 
-## 🧪 Test the Backend
+## Test the Backend
 
 ```bash
 # Health check
@@ -142,9 +141,10 @@ Expected response:
 
 ---
 
-## 🔧 Changing the Backend URL Later
+## Changing the Backend URL Later
 
 **From the extension:**
+- Visit YouTube and launch any video from the homepage
 - Click the extension icon → ⚙️ gear icon
 - Or right-click icon → Options
 - Update the URL and save
@@ -154,7 +154,7 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 
 ---
 
-## 🎨 Features
+## Features
 
 - **Catppuccin Mocha** purple theme
 - Works on YouTube **videos** and **Shorts**
@@ -179,7 +179,7 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 
 ---
 
-## 📋 Requirements
+## Requirements
 
 - **Backend**: Python 3.10+, yt-dlp, ffmpeg (for some formats)
 - **Extension**: Any Chromium browser (Chrome, Edge, Brave, Arc, Opera)
