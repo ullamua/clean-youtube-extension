@@ -1,0 +1,9 @@
+# Deploy to Render.com for free
+services:
+  - type: web
+    name: yt-clean-proxy
+    runtime: docker
+    plan: free
+    envVars:
+      - key: BASE_URL
+        value: https://yt-clean-proxy.onrender.com
