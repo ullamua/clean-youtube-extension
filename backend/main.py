@@ -98,11 +98,11 @@ def get_yt_info(url: str, quality: str = "best") -> dict:
         "-f", fmt,
         "--merge-output-format", "mp4",
         "--no-playlist",
-        "--extractor-args", "youtube:player_client=web,android,ios",   # ← THIS IS THE FIX
+        "--extractor-args", "youtube:player_client=web,android,ios",   
         "--geo-bypass",
         "--user-agent",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",          # updated UA (April 2026)
+        "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",          
         "--referer", "https://www.youtube.com/",
     ]
     if os.path.isfile(COOKIES_PATH):
