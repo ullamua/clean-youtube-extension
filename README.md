@@ -170,7 +170,6 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 
 - **Catppuccin Mocha** purple theme
 - Sleek glassmorphic popup with live backend status & video thumbnail preview
-- Modern floating action button on YouTube
 - **Quality selector** — choose 360p, 480p, 720p, 1080p, or Best
 - Works on YouTube **videos** and **Shorts**
 - Configurable link expiration (5min, 30min, 1hr, 24hr, never)
