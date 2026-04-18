@@ -1,10 +1,5 @@
 """
 YT Clean Proxy — Python backend (Railway / Render / Fly / Docker / VPS)
-
-Supports:
-  - Quality selector (360 / 480 / 720 / 1080 / best)
-  - Proxy streaming with Range support
-  - Cookie upload for restricted videos
 """
 
 import asyncio
@@ -40,10 +35,10 @@ QualityType = Literal["360", "480", "720", "1080", "best"]
 
 # Map quality -> yt-dlp format string. Falls back gracefully.
 QUALITY_FORMATS: dict[str, str] = {
-    "360":  "best[ext=mp4][height<=360]/bv*[height<=360]+ba/best[height<=360]",
-    "480":  "best[ext=mp4][height<=480]/bv*[height<=480]+ba/best[height<=480]",
-    "720":  "best[ext=mp4][height<=720]/bv*[height<=720]+ba/best[height<=720]",
-    "1080": "best[ext=mp4][height<=1080]/bv*[height<=1080]+ba/best[height<=1080]",
+    "360": "best[height<=360]/bv*[height<=360]+ba/best[height<=360]",
+    "480": "best[height<=480]/bv*[height<=480]+ba/best[height<=480]",
+    "720": "best[height<=720]/bv*[height<=720]+ba/best[height<=720]",
+    "1080": "best[height<=1080]/bv*[height<=1080]+ba/best[height<=1080]",
     "best": "best[ext=mp4]/bv*+ba/best",
 }
 
@@ -103,29 +98,25 @@ def get_yt_info(url: str, quality: str = "best") -> dict:
         "-f", fmt,
         "--merge-output-format", "mp4",
         "--no-playlist",
-        "--extractor-args",
-        "youtube:player_client=android,web,ios,web_safari,web_embedded,android_vr",
+        "--extractor-args", "youtube:player_client=web,android,ios",   # ← THIS IS THE FIX
         "--geo-bypass",
         "--user-agent",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",          # updated UA (April 2026)
         "--referer", "https://www.youtube.com/",
     ]
-
     if os.path.isfile(COOKIES_PATH):
         cmd.extend(["--cookies", COOKIES_PATH])
-
     cmd.append(url)
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
     if result.returncode != 0:
         err = result.stderr.strip()
         if "Sign in" in err or "bot" in err.lower() or "confirm you're not a bot" in err.lower():
             raise HTTPException(
                 403,
                 "YouTube blocked this video (anti-bot). "
-                "Re-export fresh cookies.txt from Chrome (logged in, on the video page) "
+                "Re-export fresh cookies.txt from Chrome (logged in, on the VIDEO page itself — not just the feed) "
                 "or try a different video.",
             )
         raise HTTPException(500, f"yt-dlp error: {err[:300]}")
