@@ -2,263 +2,141 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      width: 380px;
-      min-height: 200px;
-      background: #1e1e2e;
-      color: #cdd6f4;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 13px;
-      padding: 20px;
-    }
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-    .header .logo { font-size: 24px; }
-    .header h1 {
-      font-size: 16px;
-      font-weight: 700;
-      color: #cba6f7;
-    }
-    .header .settings {
-      margin-left: auto;
-      background: none;
-      border: none;
-      color: #6c7086;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    .header .settings:hover { color: #cba6f7; }
-
-    .video-title {
-      background: #313244;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      font-size: 12px;
-      color: #a6adc8;
-      line-height: 1.4;
-      max-height: 52px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .section-label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #6c7086;
-      margin-bottom: 8px;
-    }
-
-    .expire-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-      margin-bottom: 16px;
-    }
-    .expire-btn {
-      background: #313244;
-      border: 2px solid transparent;
-      border-radius: 8px;
-      color: #cdd6f4;
-      padding: 8px 4px;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
-      transition: all 0.15s;
-    }
-    .expire-btn:hover { background: #45475a; }
-    .expire-btn.active {
-      border-color: #cba6f7;
-      background: rgba(203,166,247,0.12);
-      color: #cba6f7;
-    }
-    .expire-btn.danger {
-      border-color: #f38ba8;
-      background: rgba(243,139,168,0.12);
-      color: #f38ba8;
-    }
-    .never-warn {
-      background: rgba(243,139,168,0.1);
-      border: 1px solid rgba(243,139,168,0.3);
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin-bottom: 14px;
-      font-size: 11px;
-      color: #f38ba8;
-      display: none;
-    }
-
-    .generate-btn {
-      width: 100%;
-      padding: 12px;
-      background: #cba6f7;
-      color: #1e1e2e;
-      border: none;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .generate-btn:hover { background: #b4befe; }
-    .generate-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .generate-btn.loading {
-      position: relative;
-      color: transparent;
-    }
-    .generate-btn.loading::after {
-      content: "";
-      position: absolute;
-      width: 18px; height: 18px;
-      top: 50%; left: 50%;
-      margin: -9px 0 0 -9px;
-      border: 2px solid #1e1e2e;
-      border-top-color: transparent;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .result {
-      margin-top: 14px;
-      display: none;
-    }
-    .result-url {
-      background: #313244;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 11px;
-      color: #89b4fa;
-      word-break: break-all;
-      margin-bottom: 10px;
-      line-height: 1.4;
-    }
-    .result-actions {
-      display: flex;
-      gap: 8px;
-    }
-    .result-actions button {
-      flex: 1;
-      padding: 8px;
-      border-radius: 8px;
-      border: none;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .copy-btn {
-      background: #cba6f7;
-      color: #1e1e2e;
-    }
-    .copy-btn:hover { background: #b4befe; }
-    .open-btn {
-      background: #313244;
-      color: #cdd6f4;
-    }
-    .open-btn:hover { background: #45475a; }
-
-    .result-meta {
-      font-size: 11px;
-      color: #6c7086;
-      margin-top: 8px;
-    }
-
-    .error {
-      background: rgba(243,139,168,0.1);
-      border: 1px solid rgba(243,139,168,0.3);
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-top: 12px;
-      font-size: 12px;
-      color: #f38ba8;
-      display: none;
-    }
-
-    .toast {
-      position: fixed;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%) translateY(-40px);
-      background: #313244;
-      color: #a6e3a1;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      opacity: 0;
-      transition: all 0.25s ease;
-      z-index: 100;
-    }
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-
-    .no-video {
-      text-align: center;
-      padding: 30px 10px;
-      color: #6c7086;
-    }
-    .no-video .icon { font-size: 32px; margin-bottom: 10px; }
-    .no-video p { font-size: 12px; line-height: 1.5; }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="toast" id="toast"></div>
 
-  <div class="header">
-    <span class="logo">🔗</span>
-    <h1>YT Clean Link</h1>
-    <button class="settings" id="settingsBtn" title="Settings">⚙️</button>
-  </div>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
 
-  <div id="mainView">
-    <div id="noVideo" class="no-video" style="display:none;">
-      <div class="icon">📺</div>
-      <p>Navigate to a YouTube video<br>to generate a clean link</p>
+  <header class="header">
+    <div class="brand">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>YT Clean Link</h1>
+        <span class="brand-sub">Share YouTube without the noise</span>
+      </div>
+    </div>
+    <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="2"/>
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </header>
+
+  <main id="mainView">
+    <div id="noVideo" class="empty-state" style="display:none;">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="6" width="20" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/>
+          <path d="m10 11 4 2.5L10 16v-5Z" fill="currentColor"/>
+          <path d="M7 3l2 3M17 3l-2 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h3>No video detected</h3>
+      <p>Open a YouTube video, then click the<br>extension icon to generate a clean link.</p>
     </div>
 
     <div id="videoView" style="display:none;">
-      <div class="video-title" id="videoTitle">Loading...</div>
+      <div class="video-card">
+        <div class="video-thumb" id="videoThumb"></div>
+        <div class="video-meta">
+          <div class="video-title" id="videoTitle">Loading…</div>
+          <div class="video-channel" id="videoUrl"></div>
+        </div>
+      </div>
 
-      <div class="section-label">Link expiration</div>
-      <div class="expire-grid">
-        <button class="expire-btn" data-minutes="5">5 min</button>
-        <button class="expire-btn active" data-minutes="30">30 min</button>
-        <button class="expire-btn" data-minutes="60">1 hour</button>
-        <button class="expire-btn" data-minutes="1440">24 hours</button>
-        <button class="expire-btn" data-minutes="0">NEVER</button>
+      <div class="field">
+        <div class="field-head">
+          <span class="field-label">Quality</span>
+          <span class="field-hint" id="qualityHint">Best available</span>
+        </div>
+        <div class="chip-grid quality-grid">
+          <button class="chip" data-quality="360">360p</button>
+          <button class="chip" data-quality="480">480p</button>
+          <button class="chip" data-quality="720">720p</button>
+          <button class="chip" data-quality="1080">1080p</button>
+          <button class="chip active" data-quality="best">Best</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <span class="field-label">Link expires in</span>
+          <span class="field-hint" id="expireHint">30 minutes</span>
+        </div>
+        <div class="chip-grid expire-grid">
+          <button class="chip" data-minutes="5">5 min</button>
+          <button class="chip active" data-minutes="30">30 min</button>
+          <button class="chip" data-minutes="60">1 hour</button>
+          <button class="chip" data-minutes="1440">24 hours</button>
+          <button class="chip danger-chip" data-minutes="0">Never</button>
+        </div>
       </div>
 
       <div class="never-warn" id="neverWarn">
-        ⚠️ Links that never expire use significant bandwidth. Use sparingly!
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+          <path d="M12 9v4m0 4h.01M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Permanent links keep using bandwidth. Use sparingly.</span>
       </div>
 
-      <button class="generate-btn" id="generateBtn">Generate Clean MP4 Link</button>
+      <button class="primary-btn" id="generateBtn">
+        <span class="btn-content">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+            <path d="m13 2-3 7h7l-9 13 3-9H4l9-11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Generate Clean Link
+        </span>
+      </button>
 
       <div class="error" id="error"></div>
 
       <div class="result" id="result">
+        <div class="result-head">
+          <span class="result-pill">
+            <span class="dot"></span>
+            Ready to share
+          </span>
+          <span class="result-meta" id="resultMeta"></span>
+        </div>
         <div class="result-url" id="resultUrl"></div>
         <div class="result-actions">
-          <button class="copy-btn" id="copyBtn">📋 Copy Link</button>
-          <button class="open-btn" id="openBtn">🔗 Open</button>
+          <button class="primary-btn compact" id="copyBtn">
+            <span class="btn-content">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+                <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              Copy
+            </span>
+          </button>
+          <button class="ghost-btn" id="openBtn">
+            <span class="btn-content">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Open
+            </span>
+          </button>
         </div>
-        <div class="result-meta" id="resultMeta"></div>
       </div>
     </div>
-  </div>
+  </main>
+
+  <footer class="footer">
+    <span id="backendStatus" class="backend-status">
+      <span class="status-dot"></span>
+      <span id="backendLabel">backend</span>
+    </span>
+  </footer>
 
   <script src="popup.js"></script>
 </body>

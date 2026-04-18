@@ -3,104 +3,163 @@
 <head>
   <meta charset="utf-8">
   <title>YT Clean Link — Settings</title>
+  <link rel="stylesheet" href="popup.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #1e1e2e;
-      color: #cdd6f4;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      width: 100vw;
       min-height: 100vh;
+      max-width: none;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+    }
+    .settings-card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      box-shadow: var(--shadow-elev);
+    }
+    .settings-header {
       display: flex;
       align-items: center;
-      justify-content: center;
-    }
-    .card {
-      background: #181825;
-      border-radius: 16px;
-      padding: 32px;
-      width: 460px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    }
-    h1 {
-      font-size: 20px;
-      color: #cba6f7;
+      gap: 12px;
       margin-bottom: 6px;
+    }
+    .settings-header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
     }
     .subtitle {
       font-size: 13px;
-      color: #6c7086;
+      color: var(--text-muted);
       margin-bottom: 24px;
     }
-    label {
+    .form-group { margin-bottom: 18px; }
+    .form-group label {
       display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: #a6adc8;
-      margin-bottom: 6px;
-    }
-    input {
-      width: 100%;
-      padding: 10px 14px;
-      background: #313244;
-      border: 2px solid #45475a;
-      border-radius: 10px;
-      color: #cdd6f4;
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    input:focus { border-color: #cba6f7; }
-    .help {
       font-size: 11px;
-      color: #6c7086;
-      margin-top: 6px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 11px 14px;
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 14px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .form-group input:focus {
+      border-color: var(--accent);
+      background: var(--bg);
+    }
+    .help {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 8px;
       line-height: 1.5;
     }
+    .help code {
+      background: var(--bg-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--accent);
+    }
     .actions {
-      margin-top: 20px;
+      margin-top: 22px;
       display: flex;
       gap: 10px;
     }
-    button {
-      padding: 10px 20px;
-      border-radius: 10px;
-      border: none;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .save-btn { background: #cba6f7; color: #1e1e2e; }
-    .save-btn:hover { background: #b4befe; }
-    .reset-btn { background: #313244; color: #cdd6f4; }
-    .reset-btn:hover { background: #45475a; }
     .status {
-      margin-top: 12px;
+      margin-top: 14px;
       font-size: 12px;
-      color: #a6e3a1;
+      color: var(--success);
       opacity: 0;
       transition: opacity 0.2s;
     }
     .status.show { opacity: 1; }
+    .preset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .preset-btn {
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover {
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: var(--surface-2);
+    }
+    .preset-btn strong {
+      display: block;
+      color: var(--accent);
+      font-size: 11px;
+      margin-bottom: 2px;
+      font-family: ui-monospace, monospace;
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>🔗 YT Clean Link Settings</h1>
-    <p class="subtitle">Configure your backend proxy server</p>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
 
-    <label for="backendUrl">Backend URL</label>
-    <input type="url" id="backendUrl" placeholder="http://localhost:8000">
-    <p class="help">
-      The URL of your YT Clean Proxy backend.<br>
-      Default: <code style="color:#89b4fa">http://localhost:8000</code>
-    </p>
+  <div class="settings-card">
+    <div class="settings-header">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1>Settings</h1>
+    </div>
+    <p class="subtitle">Configure your backend endpoint. Self-host the Python backend on Railway, Render, Fly.io, or any Docker host.</p>
+
+    <div class="form-group">
+      <label for="backendUrl">Backend URL</label>
+      <input id="backendUrl" type="url" placeholder="https://your-backend.example.com" spellcheck="false" autocomplete="off">
+      <div class="help">No trailing slash. Example: <code>https://yt-clean.up.railway.app</code></div>
+    </div>
+
+    <div class="form-group">
+      <label>Quick presets</label>
+      <div class="preset-grid">
+        <button class="preset-btn" data-url="http://localhost:8000">
+          <strong>Local</strong>
+          http://localhost:8000
+        </button>
+      </div>
+    </div>
 
     <div class="actions">
-      <button class="save-btn" id="saveBtn">Save</button>
-      <button class="reset-btn" id="resetBtn">Reset to Default</button>
+      <button class="primary-btn compact" id="saveBtn">Save</button>
+      <button class="ghost-btn" id="resetBtn">Reset</button>
     </div>
-    <div class="status" id="status">✅ Settings saved!</div>
+    <div class="status" id="status"></div>
   </div>
 
   <script src="options.js"></script>

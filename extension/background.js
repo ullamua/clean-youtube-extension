@@ -4,7 +4,7 @@ const DEFAULT_BACKEND = "http://localhost:8000";
 
 async function getBackendURL() {
   const result = await chrome.storage.local.get("backendURL");
-  return result.backendURL || DEFAULT_BACKEND;
+  return (result.backendURL || DEFAULT_BACKEND).replace(/\/+$/, "");
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -12,7 +12,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleGenerate(message.data).then(sendResponse).catch(err => {
       sendResponse({ error: err.message || "Unknown error" });
     });
-    return true; // async
+    return true;
   }
   if (message.type === "GET_BACKEND_URL") {
     getBackendURL().then(url => sendResponse({ url }));
@@ -29,7 +29,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleGenerate(data) {
   const backendURL = await getBackendURL();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 45000);
 
   try {
     const res = await fetch(`${backendURL}/generate`, {
@@ -37,7 +37,8 @@ async function handleGenerate(data) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url: data.url,
-        expire_minutes: data.expire_minutes
+        expire_minutes: data.expire_minutes,
+        quality: data.quality || "best"
       }),
       signal: controller.signal
     });
@@ -46,13 +47,13 @@ async function handleGenerate(data) {
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.detail || `Server error (${res.status})`);
+      throw new Error(errBody.detail || errBody.error || `Server error (${res.status})`);
     }
 
     return await res.json();
   } catch (err) {
     clearTimeout(timeout);
-    if (err.name === "AbortError") throw new Error("Request timed out (30s)");
+    if (err.name === "AbortError") throw new Error("Request timed out (45s)");
     throw err;
   }
 }

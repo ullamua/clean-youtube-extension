@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YT Clean Link",
-  "version": "1.0.0",
-  "description": "Generate clean, shareable MP4 links for YouTube videos",
+  "version": "1.1.0",
+  "description": "Generate clean, shareable MP4 links for YouTube videos with quality control.",
   "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "action": {
     "default_popup": "popup.html",

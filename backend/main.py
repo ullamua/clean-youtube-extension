@@ -1,5 +1,10 @@
 """
-YT Clean Proxy
+YT Clean Proxy — Python backend (Railway / Render / Fly / Docker / VPS)
+
+Supports:
+  - Quality selector (360 / 480 / 720 / 1080 / best)
+  - Proxy streaming with Range support
+  - Cookie upload for restricted videos
 """
 
 import asyncio
@@ -8,6 +13,7 @@ import os
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
@@ -15,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
-app = FastAPI(title="YT Clean Proxy", version="1.4.4")
+app = FastAPI(title="YT Clean Proxy", version="1.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,18 +34,32 @@ links: dict[str, dict] = {}
 rate_limits: dict[str, list[float]] = defaultdict(list)
 
 RATE_LIMIT = 10
-COOKIES_PATH = "/app/cookies.txt"
+COOKIES_PATH = os.getenv("COOKIES_PATH", "/app/cookies.txt")
+
+QualityType = Literal["360", "480", "720", "1080", "best"]
+
+# Map quality -> yt-dlp format string. Falls back gracefully.
+QUALITY_FORMATS: dict[str, str] = {
+    "360":  "best[ext=mp4][height<=360]/bv*[height<=360]+ba/best[height<=360]",
+    "480":  "best[ext=mp4][height<=480]/bv*[height<=480]+ba/best[height<=480]",
+    "720":  "best[ext=mp4][height<=720]/bv*[height<=720]+ba/best[height<=720]",
+    "1080": "best[ext=mp4][height<=1080]/bv*[height<=1080]+ba/best[height<=1080]",
+    "best": "best[ext=mp4]/bv*+ba/best",
+}
 
 
 class GenerateRequest(BaseModel):
     url: str
     expire_minutes: int = 30
+    quality: QualityType = "best"
 
     @field_validator("url")
     @classmethod
     def validate_url(cls, v):
         if "youtube.com/" not in v and "youtu.be/" not in v:
             raise ValueError("Must be a valid YouTube URL")
+        if len(v) > 500:
+            raise ValueError("URL too long")
         return v
 
     @field_validator("expire_minutes")
@@ -70,20 +90,25 @@ def generate_short_id(url: str) -> str:
     return h[:8]
 
 
-def get_yt_info(url: str) -> dict:
+def get_yt_info(url: str, quality: str = "best") -> dict:
     import json
     import subprocess
+
+    fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
 
     cmd = [
         "yt-dlp",
         "--no-warnings",
         "-j",
-        "-f", "best[ext=mp4]/bv*+ba/best",
+        "-f", fmt,
         "--merge-output-format", "mp4",
         "--no-playlist",
-        "--extractor-args", "youtube:player_client=android,web,ios,web_safari,web_embedded,android_vr",
+        "--extractor-args",
+        "youtube:player_client=android,web,ios,web_safari,web_embedded,android_vr",
         "--geo-bypass",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "--user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
         "--referer", "https://www.youtube.com/",
     ]
 
@@ -99,9 +124,9 @@ def get_yt_info(url: str) -> dict:
         if "Sign in" in err or "bot" in err.lower() or "confirm you're not a bot" in err.lower():
             raise HTTPException(
                 403,
-                "YouTube blocked this video (very strict anti-bot). "
-                "Re-export fresh cookies.txt from Chrome (while logged in and on the video page) "
-                "or try a different video."
+                "YouTube blocked this video (anti-bot). "
+                "Re-export fresh cookies.txt from Chrome (logged in, on the video page) "
+                "or try a different video.",
             )
         raise HTTPException(500, f"yt-dlp error: {err[:300]}")
 
@@ -110,6 +135,8 @@ def get_yt_info(url: str) -> dict:
         "title": info.get("title", "video"),
         "direct_url": info.get("url"),
         "http_headers": info.get("http_headers", {}),
+        "height": info.get("height"),
+        "format_note": info.get("format_note", ""),
     }
 
 
@@ -125,7 +152,8 @@ async def health():
     return {
         "status": "ok",
         "service": "YT Clean Proxy",
-        "version": "1.4.4",
+        "version": "1.5.0",
+        "mode": "proxy-stream",
         "cookies_configured": os.path.isfile(COOKIES_PATH),
     }
 
@@ -133,6 +161,7 @@ async def health():
 @app.post("/upload-cookies")
 async def upload_cookies(file: UploadFile = File(...)):
     content = await file.read()
+    os.makedirs(os.path.dirname(COOKIES_PATH) or ".", exist_ok=True)
     with open(COOKIES_PATH, "wb") as f:
         f.write(content)
     return {"status": "ok", "message": "Cookies uploaded successfully."}
@@ -144,7 +173,7 @@ async def generate(req: GenerateRequest, request: Request):
     check_rate_limit(ip)
     cleanup_expired()
 
-    info = await asyncio.to_thread(get_yt_info, req.url)
+    info = await asyncio.to_thread(get_yt_info, req.url, req.quality)
 
     short_id = generate_short_id(req.url)
 
@@ -158,20 +187,26 @@ async def generate(req: GenerateRequest, request: Request):
         "youtube_url": req.url,
         "title": info["title"],
         "expires_at": expires_at,
-        "http_headers": info.get("http_headers", {}),
+        "quality": req.quality,
     }
 
     clean_url = f"{base_url}/v/{short_id}.mp4"
 
     expires_label = (
-        "NEVER (⚠️)" if req.expire_minutes == 0 else
-        f"{req.expire_minutes} minutes" if req.expire_minutes < 60 else
-        f"{req.expire_minutes // 60} hour{'s' if req.expire_minutes // 60 > 1 else ''}"
+        "Never expires" if req.expire_minutes == 0 else
+        f"{req.expire_minutes}m" if req.expire_minutes < 60 else
+        f"{req.expire_minutes // 60}h" + ("s" if req.expire_minutes // 60 > 1 else "")
+    )
+
+    quality_label = (
+        f"{info['height']}p" if info.get("height") else
+        ("Best" if req.quality == "best" else f"{req.quality}p")
     )
 
     return {
         "clean_url": clean_url,
         "expires_in": expires_label,
+        "quality": quality_label,
         "title": f"{info['title']}.mp4",
     }
 
@@ -189,14 +224,16 @@ async def stream_video(short_id: str, request: Request):
         del links[short_id]
         raise HTTPException(410, "Link has expired")
 
-    # Get fresh direct URL + headers (YouTube URLs expire fast)
-    fresh_info = await asyncio.to_thread(get_yt_info, entry["youtube_url"])
+    fresh_info = await asyncio.to_thread(
+        get_yt_info, entry["youtube_url"], entry.get("quality", "best")
+    )
     direct_url = fresh_info["direct_url"]
 
     headers = dict(fresh_info.get("http_headers", {}))
     headers.setdefault(
         "User-Agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
     )
     headers.setdefault("Referer", "https://www.youtube.com/")
 
@@ -205,19 +242,17 @@ async def stream_video(short_id: str, request: Request):
 
     safe_title = entry["title"].replace('"', "'").replace("\n", " ")
 
-    # Create persistent client + proper streaming with header forwarding
     client = httpx.AsyncClient(follow_redirects=True, timeout=None)
 
     try:
-        req = client.build_request("GET", direct_url, headers=headers)
-        source_resp = await client.send(req, stream=True)
+        req_obj = client.build_request("GET", direct_url, headers=headers)
+        source_resp = await client.send(req_obj, stream=True)
 
         async def stream_generator():
             try:
                 async for chunk in source_resp.aiter_bytes(65536):
                     yield chunk
             finally:
-                # Properly close resources when user stops watching / seeks
                 await source_resp.aclose()
                 await client.aclose()
 
@@ -230,7 +265,6 @@ async def stream_video(short_id: str, request: Request):
             "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
         }
 
-        # Forward important headers for proper seeking support
         if "Content-Range" in source_resp.headers:
             resp_headers["Content-Range"] = source_resp.headers["Content-Range"]
         if "Content-Length" in source_resp.headers:
@@ -238,11 +272,10 @@ async def stream_video(short_id: str, request: Request):
 
         return StreamingResponse(
             stream_generator(),
-            status_code=source_resp.status_code,   # 200 or 206 — critical for seeking
+            status_code=source_resp.status_code,
             headers=resp_headers,
         )
 
     except Exception as e:
         await client.aclose()
-        # Log if needed, but don't expose internal errors to user
         raise HTTPException(502, "Failed to stream video") from e
