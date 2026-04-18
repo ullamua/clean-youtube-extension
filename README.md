@@ -21,7 +21,7 @@ A Chrome extension + self-hostable backend to generate clean, shareable MP4 link
 │   ├── manifest.json
 │   ├── background.js
 │   ├── content.js / content.css
-│   ├── popup.html / popup.js
+│   ├── popup.html / popup.css / popup.js
 │   ├── options.html / options.js
 │   └── icons/
 └── backend/            ← FastAPI Backend (self-host anywhere)
@@ -134,10 +134,10 @@ curl -X DELETE https://your-backend-url/cookies
 # Health check
 curl http://localhost:8000/
 
-# Generate a clean link
+# Generate a clean link (with quality)
 curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "expire_minutes": 30}'
+  -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "expire_minutes": 30, "quality": "1080"}'
 ```
 
 Expected response:
@@ -148,6 +148,8 @@ Expected response:
   "title": "Rick Astley - Never Gonna Give You Up.mp4"
 }
 ```
+
+`quality` accepts `360`, `480`, `720`, `1080`, or `best` (default).
 
 ---
 
@@ -167,6 +169,9 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 ## Features
 
 - **Catppuccin Mocha** purple theme
+- Sleek glassmorphic popup with live backend status & video thumbnail preview
+- Modern floating action button on YouTube
+- **Quality selector** — choose 360p, 480p, 720p, 1080p, or Best
 - Works on YouTube **videos** and **Shorts**
 - Configurable link expiration (5min, 30min, 1hr, 24hr, never)
 - One-click copy & open in new tab
