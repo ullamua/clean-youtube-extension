@@ -20,7 +20,6 @@ A Chrome extension + self-hostable backend to generate clean, shareable MP4 link
 ├── extension/          ← Chrome Extension (Manifest V3)
 │   ├── manifest.json
 │   ├── background.js
-│   ├── content.js / content.css
 │   ├── popup.html / popup.css / popup.js
 │   ├── options.html / options.js
 │   └── icons/
