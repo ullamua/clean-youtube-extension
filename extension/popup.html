@@ -41,7 +41,7 @@
         </svg>
       </div>
       <h3>No video detected</h3>
-      <p>Open a YouTube video, then click the<br>extension icon to generate a clean link.</p>
+      <p>Open a YouTube video or Short, then click<br>the extension icon to generate a clean link.</p>
     </div>
 
     <div id="videoView" style="display:none;">
@@ -76,7 +76,7 @@
           <button class="chip" data-minutes="5">5 min</button>
           <button class="chip active" data-minutes="30">30 min</button>
           <button class="chip" data-minutes="60">1 hour</button>
-          <button class="chip" data-minutes="1440">24 hours</button>
+          <button class="chip" data-minutes="1440">24 hrs</button>
           <button class="chip danger-chip" data-minutes="0">Never</button>
         </div>
       </div>
@@ -85,7 +85,7 @@
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
           <path d="M12 9v4m0 4h.01M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>Permanent links keep using bandwidth. Use sparingly.</span>
+        <span>Permanent links keep using server bandwidth. Use sparingly.</span>
       </div>
 
       <button class="primary-btn" id="generateBtn">
@@ -107,6 +107,7 @@
           </span>
           <span class="result-meta" id="resultMeta"></span>
         </div>
+        <div class="result-filename" id="resultTitle" style="display:none;"></div>
         <div class="result-url" id="resultUrl"></div>
         <div class="result-actions">
           <button class="primary-btn compact" id="copyBtn">
@@ -136,6 +137,7 @@
       <span class="status-dot"></span>
       <span id="backendLabel">backend</span>
     </span>
+    <span id="cookieStatus" class="cookie-badge"></span>
   </footer>
 
   <script src="popup.js"></script>

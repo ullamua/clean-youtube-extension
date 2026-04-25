@@ -1,4 +1,4 @@
-// Popup logic
+// Popup logic v2
 
 let selectedMinutes = 30;
 let selectedQuality = "best";
@@ -24,6 +24,11 @@ const EXPIRE_LABELS = {
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  // Load saved preferences
+  const prefs = await chrome.storage.local.get(["savedQuality", "savedMinutes"]);
+  if (prefs.savedQuality) selectedQuality = prefs.savedQuality;
+  if (prefs.savedMinutes !== undefined) selectedMinutes = prefs.savedMinutes;
+
   pingBackend();
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -46,24 +51,38 @@ async function init() {
       `url('https://i.ytimg.com/vi/${videoId}/mqdefault.jpg')`;
   }
 
-  // Quality chips
+  // Quality chips — restore saved preference
   document.querySelectorAll(".quality-grid .chip").forEach(btn => {
+    if (btn.dataset.quality === selectedQuality) {
+      document.querySelectorAll(".quality-grid .chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("qualityHint").textContent = QUALITY_LABELS[selectedQuality];
+    }
     btn.addEventListener("click", () => {
       document.querySelectorAll(".quality-grid .chip").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       selectedQuality = btn.dataset.quality;
       document.getElementById("qualityHint").textContent = QUALITY_LABELS[selectedQuality];
+      chrome.storage.local.set({ savedQuality: selectedQuality });
     });
   });
 
-  // Expiration chips
+  // Expiration chips — restore saved preference
   document.querySelectorAll(".expire-grid .chip").forEach(btn => {
+    const minutes = parseInt(btn.dataset.minutes, 10);
+    if (minutes === selectedMinutes) {
+      document.querySelectorAll(".expire-grid .chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("expireHint").textContent = EXPIRE_LABELS[String(selectedMinutes)];
+      document.getElementById("neverWarn").classList.toggle("show", selectedMinutes === 0);
+    }
     btn.addEventListener("click", () => {
       document.querySelectorAll(".expire-grid .chip").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      selectedMinutes = parseInt(btn.dataset.minutes);
+      selectedMinutes = parseInt(btn.dataset.minutes, 10);
       document.getElementById("expireHint").textContent = EXPIRE_LABELS[String(selectedMinutes)];
       document.getElementById("neverWarn").classList.toggle("show", selectedMinutes === 0);
+      chrome.storage.local.set({ savedMinutes: selectedMinutes });
     });
   });
 
@@ -76,12 +95,13 @@ async function init() {
 }
 
 function isYouTubeVideo(url) {
-  return /youtube\.com\/(watch|shorts)/.test(url);
+  return /youtube\.com\/(watch|shorts)/.test(url) || /youtu\.be\//.test(url);
 }
 
 function extractVideoId(url) {
   try {
     const u = new URL(url);
+    if (u.hostname === "youtu.be") return u.pathname.slice(1);
     if (u.pathname.startsWith("/shorts/")) return u.pathname.split("/")[2];
     return u.searchParams.get("v");
   } catch { return null; }
@@ -98,19 +118,35 @@ async function pingBackend() {
   const dot = document.querySelector(".status-dot");
   const label = document.getElementById("backendLabel");
   try {
-    const { url } = await chrome.runtime.sendMessage({ type: "GET_BACKEND_URL" });
-    label.textContent = new URL(url).host;
-    const res = await fetch(url + "/", { method: "GET" });
-    if (res.ok) dot.classList.add("online");
-    else dot.classList.add("offline");
+    const status = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
+    if (status?.url) {
+      label.textContent = new URL(status.url).host;
+    }
+    if (status?.online) {
+      dot.classList.add("online");
+      dot.classList.remove("offline");
+      if (status.data?.cookies_configured) {
+        const count = status.data.cookies_entries || "?";
+        document.getElementById("cookieStatus").textContent = `Cookies: ${count} entries`;
+        document.getElementById("cookieStatus").className = "cookie-badge ok";
+      } else {
+        document.getElementById("cookieStatus").textContent = "No cookies";
+        document.getElementById("cookieStatus").className = "cookie-badge warn";
+      }
+    } else {
+      dot.classList.add("offline");
+      dot.classList.remove("online");
+    }
   } catch {
     dot.classList.add("offline");
+    dot.classList.remove("online");
   }
 }
 
 async function generate() {
-  if (Date.now() - lastGenTime < 3000) return;
-  lastGenTime = Date.now();
+  const now = Date.now();
+  if (now - lastGenTime < 2000) return;
+  lastGenTime = now;
 
   const btn = document.getElementById("generateBtn");
   const errorEl = document.getElementById("error");
@@ -131,12 +167,22 @@ async function generate() {
       }
     });
 
-    if (response.error) throw new Error(response.error);
+    if (response?.error) throw new Error(response.error);
+    if (!response?.clean_url) throw new Error("Invalid response from backend.");
 
     document.getElementById("resultUrl").textContent = response.clean_url;
-    const qualityTag = response.quality ? ` · ${response.quality}` : "";
-    document.getElementById("resultMeta").textContent =
-      `${response.expires_in}${qualityTag}`;
+    document.getElementById("resultUrl").dataset.url = response.clean_url;
+
+    const parts = [];
+    if (response.expires_in) parts.push(response.expires_in);
+    if (response.quality) parts.push(response.quality);
+    document.getElementById("resultMeta").textContent = parts.join(" · ");
+
+    if (response.title) {
+      document.getElementById("resultTitle").textContent = response.title;
+      document.getElementById("resultTitle").style.display = "block";
+    }
+
     resultEl.classList.add("show");
     showToast("Link ready");
   } catch (err) {
@@ -149,18 +195,26 @@ async function generate() {
 }
 
 async function copyLink() {
-  const url = document.getElementById("resultUrl").textContent;
+  const url = document.getElementById("resultUrl").textContent.trim();
+  if (!url) return;
   try {
     await navigator.clipboard.writeText(url);
     showToast("Copied to clipboard");
   } catch {
-    showToast("Copy failed");
+    // Fallback
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    showToast("Copied!");
   }
 }
 
 function openLink() {
-  const url = document.getElementById("resultUrl").textContent;
-  chrome.tabs.create({ url });
+  const url = document.getElementById("resultUrl").textContent.trim();
+  if (url) chrome.tabs.create({ url });
 }
 
 function showToast(msg) {
@@ -168,5 +222,5 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+  window._toastTimer = setTimeout(() => t.classList.remove("show"), 2000);
 }

@@ -1,9 +1,11 @@
-# Deploy to Render.com for free
 services:
   - type: web
     name: yt-clean-proxy
-    runtime: docker
+    env: docker
     plan: free
+    healthCheckPath: /
     envVars:
+      - key: COOKIES_PATH
+        value: /app/cookies.txt
       - key: BASE_URL
-        value: https://yt-clean-proxy.onrender.com
+        value: ""
