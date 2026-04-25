@@ -1,4 +1,4 @@
-<pre style="font-family: monospace; white-space: pre;">
+```
  .d8888b.  888                                 888      d8b          888               
 d88P  Y88b 888                                 888      Y8P          888               
 888    888 888                                 888                   888               
@@ -6,9 +6,8 @@ d88P  Y88b 888                                 888      Y8P          888
 888        888 d8P  Y8b     "88b 888 "88b      888      888 888 "88b 888 .88P 88K      
 888    888 888 88888888 .d888888 888  888      888      888 888  888 888888K  "Y8888b. 
 Y88b  d88P 888 Y8b.     888  888 888  888      888      888 888  888 888 "88b      X88 
- "Y8888P"  888  "Y8888  "Y888888 888  888      88888888 888 888  888 888  888  88888P'                                                                                        
-</pre>
-
+ "Y8888P"  888  "Y8888  "Y888888 888  888      88888888 888 888  888 888  888  88888P'
+```
 
 A Chrome extension + self-hostable backend to generate clean, shareable MP4 links for any YouTube video.
 
@@ -66,6 +65,8 @@ docker build -t yt-clean-proxy .
 docker run -p 8000:8000 -e BASE_URL=https://yourdomain.com yt-clean-proxy
 ```
 
+---
+
 ### Step 2: Install the Chrome Extension
 
 1. Download and unzip the extension files
@@ -75,11 +76,14 @@ docker run -p 8000:8000 -e BASE_URL=https://yourdomain.com yt-clean-proxy
 5. Select the `extension/` folder
 6. Done
 
+---
+
 ### Step 3: Configure the Backend URL
-1. Pin the Extension to your toolbar
-1. Right-click the extension icon → **Options**
-2. Paste your backend URL (e.g. `https://yt-clean-proxy.onrender.com`)
-3. Click **Save**
+
+1. Pin the extension to your toolbar
+2. Right-click the extension icon → **Options**
+3. Paste your backend URL (e.g. `https://yt-clean-proxy.onrender.com`)
+4. Click **Save**
 
 If running locally, the default `http://localhost:8000` works out of the box.
 
@@ -87,9 +91,9 @@ If running locally, the default `http://localhost:8000` works out of the box.
 
 ## YouTube Authentication (IMPORTANT)
 
-YouTube now blocks many server IPs with "Sign in to confirm you're not a bot". To fix this, you need to provide a **cookies.txt** file from a logged-in YouTube session.
+YouTube blocks many server IPs with "Sign in to confirm you're not a bot". To fix this, provide a **cookies.txt** file from a logged-in YouTube session.
 
-### How to get cookies.txt:
+### How to get cookies.txt
 
 1. Install a browser extension to export cookies:
    - Chrome: [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
@@ -97,33 +101,36 @@ YouTube now blocks many server IPs with "Sign in to confirm you're not a bot". T
 3. Click the cookie export extension → export cookies for youtube.com
 4. Save the file as `cookies.txt`
 
-### Upload cookies to your backend:
+### Upload cookies to your backend
 
-**Option A: Via API**
+**Option A: Via the extension Settings page** (recommended)
+Open Settings → drag and drop `cookies.txt` into the upload zone
+
+**Option B: Via API**
 ```bash
 curl -X POST https://your-backend-url/upload-cookies \
   -F "file=@cookies.txt"
 ```
 
-**Option B: Include in Docker build**
-Place `cookies.txt` in the `backend/` folder before building:
+**Option C: Include in Docker build**
 ```bash
 cp ~/Downloads/cookies.txt backend/cookies.txt
 docker build -t yt-clean-proxy backend/
 ```
 
-### Check if cookies are configured:
+### Check if cookies are configured
 ```bash
 curl https://your-backend-url/
-# Look for "cookies_configured": true
+# Look for "cookies_configured": true and "cookies_entries": N
 ```
 
-### Remove cookies:
+### Remove cookies
 ```bash
 curl -X DELETE https://your-backend-url/cookies
+# Or use the Delete button in the extension Settings page
 ```
 
-> ⚠️ **Security note**: Your cookies.txt contains your YouTube session. Keep it private. Don't share your backend URL publicly if cookies are uploaded. Cookies may expire periodically — re-export when needed.
+> ⚠️ **Security note**: Your `cookies.txt` contains your YouTube session. Keep your backend URL private if cookies are uploaded. Cookies may expire periodically — re-export when you see "blocked" errors again.
 
 ---
 
@@ -133,17 +140,18 @@ curl -X DELETE https://your-backend-url/cookies
 # Health check
 curl http://localhost:8000/
 
-# Generate a clean link (with quality)
+# Generate a clean link
 curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "expire_minutes": 30, "quality": "1080"}'
+  -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "expire_minutes": 30, "quality": "720"}'
 ```
 
 Expected response:
 ```json
 {
   "clean_url": "http://localhost:8000/v/a1b2c3d4.mp4",
-  "expires_in": "30 minutes",
+  "expires_in": "30 min",
+  "quality": "720p",
   "title": "Rick Astley - Never Gonna Give You Up.mp4"
 }
 ```
@@ -155,10 +163,9 @@ Expected response:
 ## Changing the Backend URL Later
 
 **From the extension:**
-- Visit YouTube and launch any video from the homepage
-- Click the extension icon → ⚙️ gear icon
+- Click the extension icon → gear icon (top right)
 - Or right-click icon → Options
-- Update the URL and save
+- Update the URL and click Save
 
 **Environment variable (backend):**
 Set `BASE_URL` to your public domain so generated links use the correct hostname.
@@ -168,31 +175,46 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 ## Features
 
 - **Catppuccin Mocha** purple theme
-- Sleek glassmorphic popup with live backend status & video thumbnail preview
-- **Quality selector** — choose 360p, 480p, 720p, 1080p, or Best
-- Works on YouTube **videos** and **Shorts**
-- Configurable link expiration (5min, 30min, 1hr, 24hr, never)
+- Sleek glassmorphic popup with live backend status, cookie status, and video thumbnail preview
+- **Quality selector** — choose 360p, 480p, 720p, 1080p, or Best (saved between sessions)
+- **Expiry selector** — 5 min, 30 min, 1 hr, 24 hrs, or Never (saved between sessions)
+- Works on YouTube **videos** and **Shorts** (including `youtu.be` short links)
 - One-click copy & open in new tab
-- Rate limiting (10 req/min per IP)
+- **Cookie upload UI** — drag-and-drop `cookies.txt` in Settings, view entry count, delete with one click
+- Rate limiting (15 req/min per IP)
 - Proper MP4 streaming with range request support (correct User-Agent & headers)
+- **URL caching** — resolved video URLs are cached server-side, making streams instant
 - Works with mpv, VLC, Discord embeds, and browsers
-- Graceful error handling for private/age-restricted/unavailable videos
+- Graceful error handling for private, age-restricted, members-only, and unavailable videos
 - **Cookies support** for YouTube bot-detection bypass
-- Upload/delete cookies via API endpoints
+- Upload/delete cookies via API or the Settings page
+
+---
+
+## API Reference
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `GET /` | GET | Health check + status |
+| `POST /generate` | POST | Generate a clean link |
+| `GET /v/{id}.mp4` | GET | Stream the video (supports `Range`) |
+| `POST /upload-cookies` | POST | Upload cookies.txt |
+| `DELETE /cookies` | DELETE | Remove cookies from server |
 
 ---
 
 ## ⚠️ Important Notes
 
-- The backend requires `yt-dlp` installed (included in Docker image)
+- The backend requires `yt-dlp` installed (included in the Docker image)
 - YouTube direct URLs expire after a few hours — use short expiration times for best results
-- "NEVER" expiration links may stop working when YouTube rotates the direct URL
-- If you get "Sign in to confirm you're not a bot", upload a cookies.txt file (see above)
+- "Never" expiration links may stop working when YouTube rotates the direct URL — just re-generate
+- If you see "Sign in to confirm you're not a bot", upload a fresh `cookies.txt` file
+- Streams use single-file MP4 format — no ffmpeg merging required
 - This tool is for personal use. Respect YouTube's Terms of Service.
 
 ---
 
 ## Requirements
 
-- **Backend**: Python 3.10+, yt-dlp, ffmpeg (for some formats)
+- **Backend**: Python 3.10+, yt-dlp (ffmpeg **not required** — streams use single-file MP4 format)
 - **Extension**: Any Chromium browser (Chrome, Edge, Brave, Arc, Opera)
