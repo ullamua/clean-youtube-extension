@@ -1,6 +1,6 @@
 """
 YT Clean Proxy — Python backend (Railway / Render / Fly / Docker / VPS)
-v2.1 — YouTube fallback clients, safer cookie handling, stream refresh, diagnostics
+v2.3 — better YouTube challenge solving, adaptive quality muxing, safer headers
 """
 
 import asyncio
@@ -8,10 +8,13 @@ import hashlib
 import os
 import time
 import json
+import shutil
 import subprocess
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
+from urllib.parse import quote
+import re
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
@@ -19,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, field_validator
 
-app = FastAPI(title="YT Clean Proxy", version="2.1.0")
+app = FastAPI(title="YT Clean Proxy", version="2.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,14 +45,39 @@ URL_CACHE_TTL = 60 * 60 * 5  # 5 hours
 
 QualityType = Literal["360", "480", "720", "1080", "best"]
 
-# Use formats that guarantee a single streamable file (no separate A+V merge needed).
-# Prefer MP4, but allow another single-file fallback if YouTube withholds MP4.
+# Prefer adaptive MP4 video + M4A audio so 480p/720p/1080p actually work.
+# Fall back to a single-file stream when YouTube withholds adaptive MP4 formats.
 QUALITY_FORMATS: dict[str, str] = {
-    "360":  "best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/best[height<=360][vcodec!=none][acodec!=none]/worst[ext=mp4][vcodec!=none][acodec!=none]",
-    "480":  "best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/best[height<=480][vcodec!=none][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]",
-    "720":  "best[height<=720][ext=mp4][vcodec!=none][acodec!=none]/best[height<=720][vcodec!=none][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]",
-    "1080": "best[height<=1080][ext=mp4][vcodec!=none][acodec!=none]/best[height<=1080][vcodec!=none][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]",
-    "best": "best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]",
+    "360": (
+        "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo[height<=360][ext=mp4]+bestaudio[acodec^=mp4a]/"
+        "best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/"
+        "best[height<=360][vcodec!=none][acodec!=none]"
+    ),
+    "480": (
+        "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo[height<=480][ext=mp4]+bestaudio[acodec^=mp4a]/"
+        "best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/"
+        "best[height<=480][vcodec!=none][acodec!=none]"
+    ),
+    "720": (
+        "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo[height<=720][ext=mp4]+bestaudio[acodec^=mp4a]/"
+        "best[height<=720][ext=mp4][vcodec!=none][acodec!=none]/"
+        "best[height<=720][vcodec!=none][acodec!=none]"
+    ),
+    "1080": (
+        "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo[height<=1080][ext=mp4]+bestaudio[acodec^=mp4a]/"
+        "best[height<=1080][ext=mp4][vcodec!=none][acodec!=none]/"
+        "best[height<=1080][vcodec!=none][acodec!=none]"
+    ),
+    "best": (
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo[ext=mp4]+bestaudio[acodec^=mp4a]/"
+        "best[ext=mp4][vcodec!=none][acodec!=none]/"
+        "best[vcodec!=none][acodec!=none]"
+    ),
 }
 
 _USER_AGENT = (
@@ -102,6 +130,20 @@ def generate_short_id(url: str) -> str:
     return h[:8]
 
 
+def _ascii_filename(title: str, fallback: str = "video") -> str:
+    """Return a header-safe ASCII filename. Starlette encodes headers as latin-1."""
+    cleaned = re.sub(r'[^A-Za-z0-9._ -]+', '', title).strip(' ._-')
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    return (cleaned or fallback)[:120]
+
+
+def _content_disposition(title: str, ext: str = "mp4") -> str:
+    ascii_name = _ascii_filename(title)
+    ext = re.sub(r'[^A-Za-z0-9]+', '', ext or "mp4") or "mp4"
+    utf8_name = quote(f"{title}.{ext}", safe="")
+    return f'inline; filename="{ascii_name}.{ext}"; filename*=UTF-8\'\'{utf8_name}'
+
+
 def _build_yt_cmd(
     url: str,
     quality: str,
@@ -111,6 +153,8 @@ def _build_yt_cmd(
     player_client: Optional[str] = None,
 ) -> list[str]:
     fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
+    remote_components = os.getenv("YT_REMOTE_COMPONENTS", "ejs:github")
+    js_runtime = os.getenv("YT_JS_RUNTIME", "deno")
     cmd = [
         "yt-dlp",
         "--no-warnings",
@@ -121,7 +165,13 @@ def _build_yt_cmd(
         "--user-agent", _USER_AGENT,
         "--referer", "https://www.youtube.com/",
         "--socket-timeout", "30",
+        "--extractor-args", "youtube:formats=missing_pot",
+        "--format-sort", "res,codec:h264,aext:m4a,br",
     ]
+    if remote_components:
+        cmd.extend(["--remote-components", remote_components])
+    if js_runtime:
+        cmd.extend(["--js-runtimes", js_runtime])
     if player_client:
         cmd.extend(["--extractor-args", f"youtube:player_client={player_client}"])
     if dump_json:
@@ -134,6 +184,11 @@ def _build_yt_cmd(
 
 def _classify_error(stderr: str) -> str:
     s = stderr.lower()
+    if "some formats may be missing" in s or "n challenge solving failed" in s:
+        return (
+            "YouTube is partially blocking format extraction on this server. "
+            "The backend should enable the challenge solver runtime and EJS components; if it still fails, try another server IP."
+        )
     if "sign in" in s or "bot" in s or "confirm you're not a bot" in s or "please sign in" in s:
         return (
             "YouTube blocked this request (anti-bot / age-gate). "
@@ -164,6 +219,29 @@ def _classify_error(stderr: str) -> str:
     return f"yt-dlp error: {stderr[:300]}"
 
 
+def _normalize_headers(raw_headers: dict | None) -> dict[str, str]:
+    headers = {k: v for k, v in (raw_headers or {}).items() if isinstance(k, str) and isinstance(v, str)}
+    headers.pop("Host", None)
+    headers.pop("host", None)
+    headers.setdefault("User-Agent", _USER_AGENT)
+    headers.setdefault("Referer", "https://www.youtube.com/")
+    return headers
+
+
+def _parse_requested_formats(info: dict) -> tuple[Optional[dict], Optional[dict]]:
+    requested_formats = info.get("requested_formats") or []
+    video = None
+    audio = None
+    for fmt in requested_formats:
+        if not isinstance(fmt, dict):
+            continue
+        if fmt.get("vcodec") not in (None, "none") and not video:
+            video = fmt
+        if fmt.get("acodec") not in (None, "none") and not audio:
+            audio = fmt
+    return video, audio
+
+
 def _extract_yt_info(url: str, quality: str, *, use_cookies: bool, player_client: Optional[str]) -> tuple[dict, str]:
     cmd = _build_yt_cmd(url, quality, dump_json=True, use_cookies=use_cookies, player_client=player_client)
     try:
@@ -184,16 +262,27 @@ def _extract_yt_info(url: str, quality: str, *, use_cookies: bool, player_client
         raise HTTPException(500, "yt-dlp returned unexpected output — try again.")
 
     direct_url = info.get("url")
-    if not direct_url:
+    video_format, audio_format = _parse_requested_formats(info)
+    if not direct_url and not video_format:
         raise HTTPException(500, "yt-dlp did not return a direct URL. The video format may be unsupported.")
+
+    selected_height = info.get("height") or (video_format or {}).get("height")
+    selected_ext = info.get("ext") or (video_format or {}).get("ext") or "mp4"
+    selected_note = info.get("format_note") or (video_format or {}).get("format_note") or ""
 
     return {
         "title": info.get("title", "video"),
+        "mode": "muxed" if video_format and audio_format else "direct",
         "direct_url": direct_url,
-        "http_headers": info.get("http_headers", {}),
-        "height": info.get("height"),
-        "format_note": info.get("format_note", ""),
-        "ext": info.get("ext", "mp4"),
+        "http_headers": _normalize_headers(info.get("http_headers", {})),
+        "video_url": (video_format or {}).get("url"),
+        "video_headers": _normalize_headers((video_format or {}).get("http_headers", {})),
+        "audio_url": (audio_format or {}).get("url"),
+        "audio_headers": _normalize_headers((audio_format or {}).get("http_headers", {})),
+        "height": selected_height,
+        "format_note": selected_note,
+        "ext": selected_ext,
+        "format_id": info.get("format_id", ""),
     }, result.stderr
 
 
@@ -204,9 +293,11 @@ def get_yt_info(url: str, quality: str = "best") -> dict:
         attempts.extend([
             (True, None),
             (True, "tv_downgraded,web_safari,web_creator,web"),
+            (True, "ios,web_safari"),
         ])
     attempts.extend([
         (False, "android_vr,web_safari,web_embedded"),
+        (False, "tv,ios,web_safari,web"),
         (False, None),
     ])
 
@@ -235,6 +326,44 @@ def get_yt_info_cached(short_id: str, youtube_url: str, quality: str) -> dict:
     return _url_cache[short_id]
 
 
+def _ffmpeg_headers(headers: dict[str, str]) -> str:
+    return "".join(f"{k}: {v}\r\n" for k, v in headers.items())
+
+
+def _build_mux_process(info: dict) -> subprocess.Popen:
+    if not shutil.which("ffmpeg"):
+        raise HTTPException(
+            500,
+            "Higher quality playback requires ffmpeg on the backend. Redeploy with the updated Dockerfile or install ffmpeg locally."
+        )
+
+    video_url = info.get("video_url")
+    audio_url = info.get("audio_url")
+    if not video_url or not audio_url:
+        raise HTTPException(500, "Missing adaptive video/audio URLs for muxed playback.")
+
+    cmd = [
+        "ffmpeg",
+        "-loglevel", "error",
+        "-nostdin",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_at_eof", "1",
+        "-reconnect_delay_max", "5",
+        "-headers", _ffmpeg_headers(info.get("video_headers", {})),
+        "-i", video_url,
+        "-headers", _ffmpeg_headers(info.get("audio_headers", {})),
+        "-i", audio_url,
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c", "copy",
+        "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+        "-f", "mp4",
+        "pipe:1",
+    ]
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+
 def cleanup_expired() -> None:
     now = datetime.now(timezone.utc)
     expired = [k for k, v in list(links.items()) if v.get("expires_at") and v["expires_at"] < now]
@@ -260,7 +389,7 @@ async def health() -> dict:
     return {
         "status": "ok",
         "service": "YT Clean Proxy",
-        "version": "2.1.0",
+        "version": "2.3.0",
         "cookies_configured": cookies_ok,
         "cookies_entries": cookies_lines,
         "active_links": len(links),
@@ -379,24 +508,45 @@ async def stream_video(short_id: str, request: Request) -> StreamingResponse:
     except Exception as e:
         raise HTTPException(502, f"Failed to resolve video URL: {e}")
 
-    direct_url = info["direct_url"]
-
-    req_headers: dict[str, str] = {
-        k: v for k, v in info.get("http_headers", {}).items()
-        if k.lower() not in ("host",)
-    }
-    req_headers.setdefault("User-Agent", _USER_AGENT)
-    req_headers.setdefault("Referer", "https://www.youtube.com/")
+    direct_url = info.get("direct_url")
+    req_headers: dict[str, str] = info.get("http_headers", {}).copy()
 
     range_header = request.headers.get("range")
     if range_header:
         req_headers["Range"] = range_header
 
-    safe_title = entry["title"].replace('"', "'").replace("\n", " ")
-
     client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30.0, read=None))
 
     try:
+        if info.get("mode") == "muxed" and info.get("video_url") and info.get("audio_url"):
+            mux_proc = _build_mux_process(info)
+
+            async def muxed_stream_generator():
+                try:
+                    while True:
+                        chunk = await asyncio.to_thread(mux_proc.stdout.read, 65536)
+                        if not chunk:
+                            break
+                        yield chunk
+                finally:
+                    if mux_proc.stdout:
+                        mux_proc.stdout.close()
+                    if mux_proc.poll() is None:
+                        mux_proc.kill()
+                        mux_proc.wait(timeout=5)
+                    await client.aclose()
+
+            ext = info.get("ext") or "mp4"
+            resp_headers: dict[str, str] = {
+                "Content-Type": "video/mp4" if ext == "mp4" else "video/webm",
+                "Content-Disposition": _content_disposition(entry["title"], ext),
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "Content-Disposition, X-Selected-Quality",
+                "X-Selected-Quality": str(info.get("height") or entry.get("quality") or "best"),
+            }
+            return StreamingResponse(muxed_stream_generator(), status_code=200, headers=resp_headers)
+
         req_obj = client.build_request("GET", direct_url, headers=req_headers)
         source_resp = await client.send(req_obj, stream=True)
 
@@ -410,12 +560,7 @@ async def stream_video(short_id: str, request: Request) -> StreamingResponse:
                 entry.get("quality", "best"),
             )
             direct_url = info["direct_url"]
-            req_headers = {
-                k: v for k, v in info.get("http_headers", {}).items()
-                if k.lower() not in ("host",)
-            }
-            req_headers.setdefault("User-Agent", _USER_AGENT)
-            req_headers.setdefault("Referer", "https://www.youtube.com/")
+            req_headers = info.get("http_headers", {}).copy()
             if range_header:
                 req_headers["Range"] = range_header
             client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30.0, read=None))
@@ -437,13 +582,15 @@ async def stream_video(short_id: str, request: Request) -> StreamingResponse:
                 await source_resp.aclose()
                 await client.aclose()
 
+        ext = info.get("ext") or "mp4"
         resp_headers: dict[str, str] = {
-            "Content-Type": "video/mp4" if info.get("ext") == "mp4" else "video/webm",
+            "Content-Type": "video/mp4" if ext == "mp4" else "video/webm",
             "Accept-Ranges": "bytes",
-            "Content-Disposition": f'inline; filename="{safe_title}.mp4"',
+            "Content-Disposition": _content_disposition(entry["title"], ext),
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+            "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, Content-Disposition, X-Selected-Quality",
+            "X-Selected-Quality": str(info.get("height") or entry.get("quality") or "best"),
         }
 
         if "content-range" in source_resp.headers:

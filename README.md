@@ -91,7 +91,7 @@ If running locally, the default `http://localhost:8000` works out of the box.
 
 ## YouTube Authentication (IMPORTANT)
 
-YouTube blocks many server IPs and sometimes blocks the uploaded YouTube account session itself. This patched backend first tries cookies when present, then automatically falls back to anonymous YouTube clients so a bad cookie file does not make every video look "region blocked".
+YouTube blocks many server IPs and sometimes blocks the uploaded YouTube account session itself. This patched backend first tries cookies when present, automatically falls back to anonymous YouTube clients, and enables yt-dlp challenge-solving components so missing formats do not collapse quality to 360p.
 
 ### How to get cookies.txt
 
@@ -156,7 +156,7 @@ Expected response:
 }
 ```
 
-`quality` accepts `360`, `480`, `720`, `1080`, or `best` (default).
+`quality` accepts `360`, `480`, `720`, `1080`, or `best` (default). Higher qualities are served by live-muxing YouTube adaptive video+audio into a clean MP4 stream.
 
 ---
 
@@ -182,7 +182,7 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 - One-click copy & open in new tab
 - **Cookie upload UI** — drag-and-drop `cookies.txt` in Settings, view entry count, delete with one click
 - Rate limiting (15 req/min per IP)
-- Proper MP4 streaming with range request support (correct User-Agent & headers)
+- Proper MP4 streaming with range request support for single-file streams and live MP4 muxing for 480p/720p/1080p adaptive streams
 - **URL caching** — resolved video URLs are cached server-side, making streams instant
 - Works with mpv, VLC, Discord embeds, and browsers
 - Graceful error handling for private, age-restricted, members-only, and unavailable videos
@@ -209,12 +209,12 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 - YouTube direct URLs expire after a few hours — use short expiration times for best results
 - "Never" expiration links may stop working when YouTube rotates the direct URL — just re-generate
 - If you see "Sign in to confirm you're not a bot", try cookies, deleting cookies, and finally a different backend IP; YouTube can block either the IP or the account session.
-- Streams use single-file MP4 format — no ffmpeg merging required
+- 480p/720p/1080p usually require YouTube adaptive video+audio streams, so the updated Dockerfile installs ffmpeg for live MP4 muxing.
 - This tool is for personal use. Respect YouTube's Terms of Service.
 
 ---
 
 ## Requirements
 
-- **Backend**: Python 3.10+, yt-dlp (ffmpeg **not required** — streams use single-file MP4 format)
+- **Backend**: Python 3.10+, yt-dlp, ffmpeg, and Node.js or Deno for YouTube challenge solving
 - **Extension**: Any Chromium browser (Chrome, Edge, Brave, Arc, Opera)

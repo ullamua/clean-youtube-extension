@@ -2,6 +2,7 @@ FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y \
     curl \
+    ffmpeg \
     nodejs \
     && rm -rf /var/lib/apt/lists/*
 
@@ -14,6 +15,8 @@ COPY main.py .
 
 ENV COOKIES_PATH=/app/cookies.txt
 ENV BASE_URL=""
+ENV YT_JS_RUNTIME=node
+ENV YT_REMOTE_COMPONENTS=ejs:github
 ENV PORT=8000
 
 EXPOSE 8000
