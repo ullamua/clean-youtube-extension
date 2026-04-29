@@ -91,7 +91,7 @@ If running locally, the default `http://localhost:8000` works out of the box.
 
 ## YouTube Authentication (IMPORTANT)
 
-YouTube blocks many server IPs with "Sign in to confirm you're not a bot". To fix this, provide a **cookies.txt** file from a logged-in YouTube session.
+YouTube blocks many server IPs and sometimes blocks the uploaded YouTube account session itself. This patched backend first tries cookies when present, then automatically falls back to anonymous YouTube clients so a bad cookie file does not make every video look "region blocked".
 
 ### How to get cookies.txt
 
@@ -130,7 +130,7 @@ curl -X DELETE https://your-backend-url/cookies
 # Or use the Delete button in the extension Settings page
 ```
 
-> ⚠️ **Security note**: Your `cookies.txt` contains your YouTube session. Keep your backend URL private if cookies are uploaded. Cookies may expire periodically — re-export when you see "blocked" errors again.
+> ⚠️ **Security note**: Your `cookies.txt` contains your YouTube session. Keep your backend URL private if cookies are uploaded. If every video says unavailable/region blocked after uploading cookies, delete cookies and test anonymously; your YouTube account session or backend IP is likely blocked.
 
 ---
 
@@ -208,7 +208,7 @@ Set `BASE_URL` to your public domain so generated links use the correct hostname
 - The backend requires `yt-dlp` installed (included in the Docker image)
 - YouTube direct URLs expire after a few hours — use short expiration times for best results
 - "Never" expiration links may stop working when YouTube rotates the direct URL — just re-generate
-- If you see "Sign in to confirm you're not a bot", upload a fresh `cookies.txt` file
+- If you see "Sign in to confirm you're not a bot", try cookies, deleting cookies, and finally a different backend IP; YouTube can block either the IP or the account session.
 - Streams use single-file MP4 format — no ffmpeg merging required
 - This tool is for personal use. Respect YouTube's Terms of Service.
 

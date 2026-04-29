@@ -1,6 +1,6 @@
 """
 YT Clean Proxy — Python backend (Railway / Render / Fly / Docker / VPS)
-v2.0 — Fixes: cookie validation, single-stream formats, URL caching, better errors
+v2.1 — YouTube fallback clients, safer cookie handling, stream refresh, diagnostics
 """
 
 import asyncio
@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, field_validator
 
-app = FastAPI(title="YT Clean Proxy", version="2.0.0")
+app = FastAPI(title="YT Clean Proxy", version="2.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,15 +42,14 @@ URL_CACHE_TTL = 60 * 60 * 5  # 5 hours
 
 QualityType = Literal["360", "480", "720", "1080", "best"]
 
-# Use formats that guarantee a single streamable file (no separate A+V merge needed)
-# bestvideo+bestaudio requires ffmpeg merging — not suitable for HTTP streaming
-# We pick best single-file format at the given height cap
+# Use formats that guarantee a single streamable file (no separate A+V merge needed).
+# Prefer MP4, but allow another single-file fallback if YouTube withholds MP4.
 QUALITY_FORMATS: dict[str, str] = {
-    "360":  "best[height<=360][ext=mp4]/best[height<=360]/worst[ext=mp4]",
-    "480":  "best[height<=480][ext=mp4]/best[height<=480]/best[ext=mp4]",
-    "720":  "best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]",
-    "1080": "best[height<=1080][ext=mp4]/best[height<=1080]/best[ext=mp4]",
-    "best": "best[ext=mp4]/best",
+    "360":  "best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/best[height<=360][vcodec!=none][acodec!=none]/worst[ext=mp4][vcodec!=none][acodec!=none]",
+    "480":  "best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/best[height<=480][vcodec!=none][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]",
+    "720":  "best[height<=720][ext=mp4][vcodec!=none][acodec!=none]/best[height<=720][vcodec!=none][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]",
+    "1080": "best[height<=1080][ext=mp4][vcodec!=none][acodec!=none]/best[height<=1080][vcodec!=none][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]",
+    "best": "best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]",
 }
 
 _USER_AGENT = (
@@ -103,22 +102,31 @@ def generate_short_id(url: str) -> str:
     return h[:8]
 
 
-def _build_yt_cmd(url: str, quality: str, dump_json: bool = True) -> list[str]:
+def _build_yt_cmd(
+    url: str,
+    quality: str,
+    dump_json: bool = True,
+    *,
+    use_cookies: bool = True,
+    player_client: Optional[str] = None,
+) -> list[str]:
     fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
     cmd = [
         "yt-dlp",
         "--no-warnings",
         "--no-playlist",
         "-f", fmt,
-        "--extractor-args", "youtube:player_client=web,android,ios",
         "--geo-bypass",
+        "--force-ipv4",
         "--user-agent", _USER_AGENT,
         "--referer", "https://www.youtube.com/",
         "--socket-timeout", "30",
     ]
+    if player_client:
+        cmd.extend(["--extractor-args", f"youtube:player_client={player_client}"])
     if dump_json:
         cmd.append("-j")
-    if os.path.isfile(COOKIES_PATH):
+    if use_cookies and os.path.isfile(COOKIES_PATH):
         cmd.extend(["--cookies", COOKIES_PATH])
     cmd.append(url)
     return cmd
@@ -129,14 +137,21 @@ def _classify_error(stderr: str) -> str:
     if "sign in" in s or "bot" in s or "confirm you're not a bot" in s or "please sign in" in s:
         return (
             "YouTube blocked this request (anti-bot / age-gate). "
-            "Upload a fresh cookies.txt from a logged-in Chrome session "
-            "(export while on the video page, not the feed). "
-            "See Settings > Upload Cookies."
+            "Try a different server/network IP first. If you use cookies, export them after fully closing YouTube tabs; "
+            "some YouTube account sessions are blocked even when the cookie file is fresh."
+        )
+    if "not available on this app" in s or "content isn't available" in s or "content is not available" in s:
+        return (
+            "YouTube rejected this player session. This is usually a blocked cookie account/IP, not a real regional block. "
+            "The backend tried both authenticated and anonymous fallback clients. Try without cookies or from a different IP."
         )
     if "private video" in s:
         return "This video is private."
-    if "copyright" in s or "not available" in s:
-        return "This video is unavailable in your region or has been removed."
+    if "copyright" in s or "not available" in s or "region" in s or "country" in s:
+        return (
+            "YouTube reports this video/account/IP as unavailable. If this happens for every video, "
+            "your uploaded cookies or server IP are blocked; delete cookies or use a different backend IP."
+        )
     if "members only" in s or "membership" in s:
         return "This video requires a YouTube channel membership."
     if "live" in s and "not" not in s:
@@ -149,17 +164,18 @@ def _classify_error(stderr: str) -> str:
     return f"yt-dlp error: {stderr[:300]}"
 
 
-def get_yt_info(url: str, quality: str = "best") -> dict:
-    cmd = _build_yt_cmd(url, quality, dump_json=True)
+def _extract_yt_info(url: str, quality: str, *, use_cookies: bool, player_client: Optional[str]) -> tuple[dict, str]:
+    cmd = _build_yt_cmd(url, quality, dump_json=True, use_cookies=use_cookies, player_client=player_client)
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
     except subprocess.TimeoutExpired:
         raise HTTPException(504, "yt-dlp timed out (90s). The video may be too long or the server is busy.")
 
     if result.returncode != 0:
+        mode = f"{'cookies' if use_cookies else 'no-cookies'} / {player_client or 'yt-dlp-default'}"
         raise HTTPException(
             403 if ("sign in" in result.stderr.lower() or "bot" in result.stderr.lower()) else 500,
-            _classify_error(result.stderr)
+            f"{_classify_error(result.stderr)} [mode: {mode}]"
         )
 
     try:
@@ -178,7 +194,33 @@ def get_yt_info(url: str, quality: str = "best") -> dict:
         "height": info.get("height"),
         "format_note": info.get("format_note", ""),
         "ext": info.get("ext", "mp4"),
-    }
+    }, result.stderr
+
+
+def get_yt_info(url: str, quality: str = "best") -> dict:
+    has_cookies = os.path.isfile(COOKIES_PATH)
+    attempts: list[tuple[bool, Optional[str]]] = []
+    if has_cookies:
+        attempts.extend([
+            (True, None),
+            (True, "tv_downgraded,web_safari,web_creator,web"),
+        ])
+    attempts.extend([
+        (False, "android_vr,web_safari,web_embedded"),
+        (False, None),
+    ])
+
+    errors: list[str] = []
+    for use_cookies, player_client in attempts:
+        try:
+            info, _ = _extract_yt_info(url, quality, use_cookies=use_cookies, player_client=player_client)
+            info["auth_mode"] = "cookies" if use_cookies else "anonymous"
+            info["player_client"] = player_client or "yt-dlp-default"
+            return info
+        except HTTPException as exc:
+            errors.append(str(exc.detail))
+
+    raise HTTPException(403, "All YouTube extraction attempts failed. " + " | ".join(errors[-2:]))
 
 
 def get_yt_info_cached(short_id: str, youtube_url: str, quality: str) -> dict:
@@ -218,7 +260,7 @@ async def health() -> dict:
     return {
         "status": "ok",
         "service": "YT Clean Proxy",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "cookies_configured": cookies_ok,
         "cookies_entries": cookies_lines,
         "active_links": len(links),
@@ -276,7 +318,7 @@ async def generate(req: GenerateRequest, request: Request) -> dict:
     if req.expire_minutes > 0:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=req.expire_minutes)
 
-    base_url = os.getenv("BASE_URL", str(request.base_url).rstrip("/"))
+    base_url = (os.getenv("BASE_URL") or str(request.base_url).rstrip("/")).rstrip("/")
 
     links[short_id] = {
         "youtube_url": req.url,
@@ -360,13 +402,32 @@ async def stream_video(short_id: str, request: Request) -> StreamingResponse:
 
         if source_resp.status_code == 403:
             await client.aclose()
-            # Invalidate cache so next request gets a fresh URL
             _url_cache.pop(short_id, None)
-            raise HTTPException(
-                502,
-                "The video URL expired (YouTube CDN 403). "
-                "Click 'Generate' again to get a fresh link."
+            info = await asyncio.to_thread(
+                get_yt_info_cached,
+                short_id,
+                entry["youtube_url"],
+                entry.get("quality", "best"),
             )
+            direct_url = info["direct_url"]
+            req_headers = {
+                k: v for k, v in info.get("http_headers", {}).items()
+                if k.lower() not in ("host",)
+            }
+            req_headers.setdefault("User-Agent", _USER_AGENT)
+            req_headers.setdefault("Referer", "https://www.youtube.com/")
+            if range_header:
+                req_headers["Range"] = range_header
+            client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30.0, read=None))
+            req_obj = client.build_request("GET", direct_url, headers=req_headers)
+            source_resp = await client.send(req_obj, stream=True)
+            if source_resp.status_code == 403:
+                await client.aclose()
+                _url_cache.pop(short_id, None)
+                raise HTTPException(
+                    502,
+                    "YouTube CDN rejected the stream after refresh. Regenerate the link; if it repeats, use another backend IP."
+                )
 
         async def stream_generator():
             try:
@@ -377,7 +438,7 @@ async def stream_video(short_id: str, request: Request) -> StreamingResponse:
                 await client.aclose()
 
         resp_headers: dict[str, str] = {
-            "Content-Type": "video/mp4",
+            "Content-Type": "video/mp4" if info.get("ext") == "mp4" else "video/webm",
             "Accept-Ranges": "bytes",
             "Content-Disposition": f'inline; filename="{safe_title}.mp4"',
             "Cache-Control": "no-cache, no-store, must-revalidate",
